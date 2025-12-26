@@ -29,6 +29,8 @@ final class GameBallViewModel: ObservableObject {
     private var cubesCaught: Int = 0
     private var lastCubeSpawnTime: Date = Date()
     private var gameStartTime: Date?
+    private var totalPausedTime: TimeInterval = 0
+    private var pauseStartTime: Date?
     private let horizontalMoveSpeed: CGFloat = 300.0
     private let cubeSizeTransitionDuration: TimeInterval = 90.0
     
@@ -37,9 +39,9 @@ final class GameBallViewModel: ObservableObject {
         case .easy:
             return 150.0
         case .normal:
-            return 280.0
+            return 180.0
         case .hard:
-            return 350.0
+            return 200.0
         }
     }
     
@@ -48,9 +50,9 @@ final class GameBallViewModel: ObservableObject {
         case .easy:
             return 1.2
         case .normal:
-            return 0.9
+            return 1.1
         case .hard:
-            return 0.8
+            return 1.0
         }
     }
     private let userDefaults = UserDefaults.standard
@@ -72,7 +74,14 @@ final class GameBallViewModel: ObservableObject {
     }
     
     var initialCubeWidth: CGFloat {
-        gameAreaWidth / 3.0
+        switch selectedDifficulty {
+        case .easy:
+            gameAreaWidth / 3.0
+        case .normal:
+            gameAreaWidth / 4.0
+        case .hard:
+            gameAreaWidth / 5.0
+        }
     }
     
     var finalCubeWidth: CGFloat {
@@ -176,6 +185,8 @@ final class GameBallViewModel: ObservableObject {
         cubesCaught = 0
         timeRemaining = 10.0
         cubes = []
+        totalPausedTime = 0
+        pauseStartTime = nil
         resetBall()
         
         spawnCube()
@@ -192,12 +203,17 @@ final class GameBallViewModel: ObservableObject {
         guard isRunning else { return }
         
         isPaused = true
+        pauseStartTime = Date()
         logerService.logSimulationPause()
     }
     
     func resumeGame() {
         guard isRunning && isPaused else { return }
         
+        if let pauseStart = pauseStartTime {
+            totalPausedTime += Date().timeIntervalSince(pauseStart)
+            pauseStartTime = nil
+        }
         isPaused = false
         lastUpdateTime = Date()
     }
@@ -216,6 +232,8 @@ final class GameBallViewModel: ObservableObject {
         isPressingRight = false
         gameStartTime = nil
         gameStartTimestamp = nil
+        totalPausedTime = 0
+        pauseStartTime = nil
         finalScore = 0
         resetBall()
         logerService.logSimulationReset()
@@ -237,9 +255,20 @@ final class GameBallViewModel: ObservableObject {
             NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: nil)
         }
         
-        let initialTime: Double = 10.0
-        let totalTime = initialTime + (10.0 - timeRemaining)
-        saveGameStatistics(cubesCaught: cubesCaught, time: totalTime, score: finalScore)
+        guard let startTime = gameStartTimestamp else {
+            saveGameStatistics(cubesCaught: cubesCaught, time: 0.0, score: finalScore)
+            checkAndSaveAchievements()
+            gameStage = .finished
+            logerService.log("Game ended with score: \(finalScore)", level: .info)
+            return
+        }
+        
+        if let pauseStart = pauseStartTime {
+            totalPausedTime += Date().timeIntervalSince(pauseStart)
+        }
+        
+        let elapsedTime = Date().timeIntervalSince(startTime) - totalPausedTime
+        saveGameStatistics(cubesCaught: cubesCaught, time: elapsedTime, score: finalScore)
         
         checkAndSaveAchievements()
         
@@ -264,6 +293,7 @@ final class GameBallViewModel: ObservableObject {
         
         userDefaults.set(encoded, forKey: gameStatisticsKey)
         userDefaults.synchronize()
+        NotificationCenter.default.post(name: UserDefaults.didChangeNotification, object: nil)
     }
     
     private func checkAndSaveAchievements() {

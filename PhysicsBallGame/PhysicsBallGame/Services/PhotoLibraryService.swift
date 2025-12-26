@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import Photos
 import Combine
+import AVFoundation
 
 @MainActor
 final class PhotoLibraryService: ObservableObject {
@@ -77,6 +78,19 @@ final class PhotoLibraryService: ObservableObject {
             return nil
         }
         return Image(uiImage: uiImage)
+    }
+    
+    func checkCameraPermission() async -> Bool {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        
+        switch status {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: .video)
+        default:
+            return false
+        }
     }
 }
 

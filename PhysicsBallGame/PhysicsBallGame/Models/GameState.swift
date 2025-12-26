@@ -16,9 +16,9 @@ enum GameDifficulty: String, CaseIterable {
         case .easy:
             return 1.5
         case .normal:
-            return 3.0
+            return 1.7
         case .hard:
-            return 6.0
+            return 2.0
         }
     }
     

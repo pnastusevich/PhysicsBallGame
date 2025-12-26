@@ -1,6 +1,8 @@
 import SwiftUI
 import PhotosUI
 import Combine
+import AVFoundation
+import Photos
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
@@ -10,6 +12,11 @@ final class SettingsViewModel: ObservableObject {
     @Published var profileImageData: Data?
     @Published var showPermissionAlert = false
     @Published var bestScore: Int = 0
+    @Published var showImagePicker = false
+    @Published var showPhotoLibraryPicker = false
+    @Published var showCameraPicker = false
+    @Published var permissionMessage = ""
+    private var shouldOpenPhotoLibraryAfterPermission = false
     
     private let userDefaults = UserDefaults.standard
     private let userNameKey = "SettingsUserName"
@@ -66,45 +73,73 @@ final class SettingsViewModel: ObservableObject {
         logerService.log("Settings saved: userName=\(userName.isEmpty ? "empty" : userName), hasProfileImage=\(profileImageData != nil)", level: .info)
     }
     
-    func handlePhotoSelection(_ item: PhotosPickerItem?) {
-        selectedPhoto = item
-        
-        guard let item = item else {
+    func userNameChanged(_ newValue: String) {
+        userName = newValue
+        saveSettings()
+    }
+    
+    func openCamera() async {
+        let hasPermission = await photoLibraryService.checkCameraPermission()
+        if hasPermission {
+            showCameraPicker = true
+            logerService.log("Camera Picker Opened", level: .info)
+        } else {
+            permissionMessage = "Для использования камеры необходимо разрешить доступ в настройках приложения."
+            showPermissionAlert = true
+            logerService.log("Camera permission denied", level: .warning)
+        }
+    }
+    
+    func openPhotoLibrary() async {
+        let hasPermission = await photoLibraryService.requestPermission()
+        if hasPermission {
+            showPhotoLibraryPicker = true
+            logerService.log("Photo Library Picker Opened", level: .info)
+        } else {
+            permissionMessage = "Для доступа к галерее необходимо разрешить доступ в настройках приложения."
+            shouldOpenPhotoLibraryAfterPermission = true
+            showPermissionAlert = true
+            logerService.log("Photo library permission denied", level: .warning)
+        }
+    }
+    
+    func checkAndOpenPhotoLibraryIfNeeded() async {
+        if shouldOpenPhotoLibraryAfterPermission {
+            let hasPermission = photoLibraryService.checkPermission()
+            if hasPermission {
+                shouldOpenPhotoLibraryAfterPermission = false
+                showPhotoLibraryPicker = true
+                logerService.log("Photo Library Picker Opened after permission granted", level: .info)
+            }
+        }
+    }
+    
+    func loadPhoto(from item: PhotosPickerItem) async {
+        do {
+            if let data = try await photoLibraryService.loadImageData(from: item) {
+                profileImageData = data
+                profileImage = photoLibraryService.createImage(from: data)
+                saveSettings()
+                logerService.log("Profile photo selected and saved", level: .info)
+            }
+        } catch {
+            logerService.logAsyncOperationError(operation: "Load profile photo", error: error.localizedDescription)
+        }
+    }
+    
+    func updateAvatar(_ image: UIImage?) {
+        guard let image = image else {
             profileImage = nil
             profileImageData = nil
             saveSettings()
             return
         }
         
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                if let data = try await photoLibraryService.loadImageData(from: item) {
-                    await MainActor.run {
-                        self.profileImageData = data
-                        self.profileImage = photoLibraryService.createImage(from: data)
-                        self.saveSettings()
-                        self.logerService.log("Profile photo selected and saved", level: .info)
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.logerService.logAsyncOperationError(operation: "Load profile photo", error: error.localizedDescription)
-                }
-            }
-        }
-    }
-    
-    func userNameChanged(_ newValue: String) {
-        userName = newValue
-        saveSettings()
-    }
-    
-    func requestPhotoLibraryPermission() async {
-        let granted = await photoLibraryService.requestPermission()
-        
-        if !granted {
-            showPermissionAlert = true
+        if let imageData = image.jpegData(compressionQuality: 0.8) {
+            profileImageData = imageData
+            profileImage = Image(uiImage: image)
+            saveSettings()
+            logerService.log("Profile photo updated from camera", level: .info)
         }
     }
     
@@ -112,6 +147,10 @@ final class SettingsViewModel: ObservableObject {
         if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(settingsUrl)
         }
+    }
+    
+    func cancelPermissionRequest() {
+        shouldOpenPhotoLibraryAfterPermission = false
     }
     
     deinit {

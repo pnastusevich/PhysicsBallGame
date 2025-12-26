@@ -13,7 +13,6 @@ struct StatisticsView: View {
                 
                 ScrollView {
                     VStack(spacing: sizing.scaled(20)) {
-                        // Statistics by difficulty
                         VStack(alignment: .leading, spacing: sizing.scaled(16)) {
                             Text("Statistics by Level")
                                 .font(.system(size: sizing.scaled(24), weight: .bold))

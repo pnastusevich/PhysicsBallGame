@@ -3,7 +3,6 @@ import Combine
 
 @MainActor
 final class StatisticsViewModel: ObservableObject {
-    private let statisticsManager = StatisticsManager.shared
     private let userDefaults = UserDefaults.standard
     private let gameStatisticsKey = "GameStatistics"
     private let achievementsKey = "Achievements"
@@ -12,46 +11,9 @@ final class StatisticsViewModel: ObservableObject {
     @Published private(set) var gameStatistics: GameStatistics = GameStatistics()
     @Published private(set) var achievements: Set<Achievement> = []
     
-    var currentVelocity: CGVector {
-        statisticsManager.currentVelocity
-    }
-    
-    var maxHeight: CGFloat {
-        statisticsManager.maxHeight
-    }
-    
-    var bounceCount: Int {
-        statisticsManager.bounceCount
-    }
-    
-    var heightHistory: [CGFloat] {
-        statisticsManager.heightHistory
-    }
-    
-    var velocityMagnitude: Double {
-        sqrt(
-            pow(currentVelocity.dx, 2) +
-            pow(currentVelocity.dy, 2)
-        )
-    }
-    
-    var formattedVelocity: String {
-        String(format: "%.2f px/s", velocityMagnitude)
-    }
-    
-    var formattedMaxHeight: String {
-        String(format: "%.2f px", maxHeight)
-    }
-    
     init() {
         gameStatistics = loadGameStatistics()
         achievements = loadAchievements()
-        
-        statisticsManager.objectWillChange
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cancellables)
         
         NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
             .sink { [weak self] _ in

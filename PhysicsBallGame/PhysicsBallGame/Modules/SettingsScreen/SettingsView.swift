@@ -1,8 +1,13 @@
 import SwiftUI
 import PhotosUI
+import Combine
+import UIKit
 
 struct SettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
+    @State private var showImagePicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var previousPhotoPermission: Bool = false
     
     var body: some View {
         NavigationStack {
@@ -28,34 +33,17 @@ struct SettingsView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: sizing.scaled(8)) {
-                                if viewModel.hasPhotoPermission {
-                                    PhotosPicker(
-                                        selection: Binding(
-                                            get: { viewModel.selectedPhoto },
-                                            set: { viewModel.handlePhotoSelection($0) }
-                                        ),
-                                        matching: .images,
-                                        photoLibrary: .shared()
-                                    ) {
-                                        Text("Select Photo")
-                                            .font(.system(size: sizing.scaled(16)))
-                                            .foregroundColor(.blue)
-                                    }
-                                } else {
-                                    Button {
-                                        Task {
-                                            await viewModel.requestPhotoLibraryPermission()
-                                        }
-                                    } label: {
-                                        Text("Select Photo")
-                                            .font(.system(size: sizing.scaled(16)))
-                                            .foregroundColor(.blue)
-                                    }
+                                Button {
+                                    showImagePicker = true
+                                } label: {
+                                    Text("Select Photo")
+                                        .font(.system(size: sizing.scaled(16)))
+                                        .foregroundColor(.blue)
                                 }
                                 
                                 if viewModel.profileImage != nil {
                                     Button(role: .destructive) {
-                                        viewModel.handlePhotoSelection(nil)
+                                        viewModel.updateAvatar(nil)
                                     } label: {
                                         Text("Remove Photo")
                                             .font(.system(size: sizing.scaled(12)))
@@ -121,13 +109,59 @@ struct SettingsView: View {
             .task {
                 viewModel.loadBestScore()
             }
-            .alert("Photo Library Access Required", isPresented: $viewModel.showPermissionAlert) {
+            .confirmationDialog("Select Source", isPresented: $showImagePicker, titleVisibility: .visible) {
+                Button("Camera") {
+                    Task {
+                        await viewModel.openCamera()
+                    }
+                }
+                Button("Photo Library") {
+                    Task {
+                        await viewModel.openPhotoLibrary()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+            .photosPicker(
+                isPresented: Binding(
+                    get: { viewModel.showPhotoLibraryPicker && viewModel.hasPhotoPermission },
+                    set: { viewModel.showPhotoLibraryPicker = $0 }
+                ),
+                selection: $selectedPhotoItem,
+                matching: .images,
+                photoLibrary: .shared()
+            )
+            .onChange(of: selectedPhotoItem) { newValue in
+                Task {
+                    if let newValue = newValue {
+                        await viewModel.loadPhoto(from: newValue)
+                    }
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { viewModel.showCameraPicker && UIImagePickerController.isSourceTypeAvailable(.camera) },
+                set: { viewModel.showCameraPicker = $0 }
+            )) {
+                ImagePicker(selectedImage: Binding(
+                    get: { 
+                        if let data = viewModel.profileImageData,
+                           let uiImage = UIImage(data: data) {
+                            return uiImage
+                        }
+                        return nil
+                    },
+                    set: { viewModel.updateAvatar($0) }
+                ), sourceType: .camera)
+            }
+            .alert("No Access", isPresented: $viewModel.showPermissionAlert) {
                 Button("Settings") {
                     viewModel.openSettings()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) {
+                    viewModel.cancelPermissionRequest()
+                }
             } message: {
-                Text("Please enable photo library access in Settings to select a profile photo.")
+                Text(viewModel.permissionMessage.isEmpty ? "Please enable access in Settings to select a profile photo." : viewModel.permissionMessage)
             }
         }
     }
