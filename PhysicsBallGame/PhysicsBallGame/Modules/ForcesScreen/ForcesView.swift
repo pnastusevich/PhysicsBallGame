@@ -54,7 +54,7 @@ struct ForcesView: View {
                 }
                 
                 Section(header: Text("Ball Type")) {
-                    Text("Select a ball type for the game. Each type has different physics properties.")
+                    Text("Select a ball type for the game. Each type has different physics properties")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.vertical, 4)
@@ -71,7 +71,7 @@ struct ForcesView: View {
                 }
                 
                 Section(header: Text("Information")) {
-                    Text("Adjust these parameters to see how they affect the ball physics. Changes are applied immediately to the game.")
+                    Text("Adjust these parameters to see how they affect the ball physics. Changes are applied immediately to the game")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
